@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -12,6 +12,33 @@
       radial-gradient(at 100% 0%, rgba(245, 158, 11, 0.05) 0px, transparent 40%),
       radial-gradient(at 50% 100%, rgba(16, 185, 129, 0.05) 0px, transparent 50%);
   }
+}
+
+/* Monkeytype Signature Smooth Caret */
+.monkey-caret {
+  position: absolute;
+  width: 2.5px;
+  background: #e2b714;
+  box-shadow: 0 0 10px rgba(226, 183, 20, 0.8), 0 0 2px #ffffff;
+  border-radius: 9999px;
+  transition: left 0.08s ease-out, top 0.12s ease-out, height 0.08s ease;
+  z-index: 20;
+  pointer-events: none;
+}
+
+@keyframes monkey-caret-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 10px rgba(226, 183, 20, 0.8), 0 0 2px #ffffff;
+  }
+  50% {
+    opacity: 0.35;
+    box-shadow: 0 0 3px rgba(226, 183, 20, 0.4);
+  }
+}
+
+.monkey-caret-blink {
+  animation: monkey-caret-pulse 1s ease-in-out infinite;
 }
 
 /* Smooth Floating Caret (Standard Glow) */

@@ -4,7 +4,7 @@ import { SecondTelemetry, CharError, BigramError, SessionSubmitPayload, KeyMetri
 import { saveKeystrokesToLocalHeatmap } from '../utils/heatmapStorage';
 
 export type TestDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
-export type TestDuration = 15 | 30 | 60;
+export type TestDuration = 15 | 30 | 60 | 120;
 export type TestStatus = 'IDLE' | 'RUNNING' | 'COMPLETED';
 
 interface UseTypingEngineProps {
@@ -147,6 +147,18 @@ export const useTypingEngine = ({
       errorRate: v.total > 0 ? Math.round(((v.errors / v.total) * 100.0) * 10.0) / 10.0 : 0.0,
     }));
 
+    let calculatedConsistency = 100;
+    const recordedWpms = telemetryRef.current.map((t) => t.instantWpm).filter((w) => w > 0);
+    if (recordedWpms.length > 1) {
+      const mean = recordedWpms.reduce((a, b) => a + b, 0) / recordedWpms.length;
+      if (mean > 0) {
+        const variance = recordedWpms.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / recordedWpms.length;
+        const stdDev = Math.sqrt(variance);
+        const cv = (stdDev / mean) * 100;
+        calculatedConsistency = Math.max(30, Math.min(99, Math.round(100 - cv)));
+      }
+    }
+
     const finalPayload: SessionSubmitPayload = {
       durationSeconds: testDuration,
       difficulty: difficultyRef.current,
@@ -167,6 +179,7 @@ export const useTypingEngine = ({
       charErrors: Array.from(charErrorsRef.current.values()),
       bigramErrors: Array.from(bigramErrorsRef.current.values()),
       keyStats: keyStatsList,
+      consistency: calculatedConsistency,
     };
 
     saveKeystrokesToLocalHeatmap(keyStatsList);
@@ -264,13 +277,21 @@ export const useTypingEngine = ({
         }
         const totalKeys = currentInput.length + currentBackspace;
         const instWpm = (correct / 5.0) / currentElapsedMins;
+        const instGross = (totalKeys / 5.0) / currentElapsedMins;
         const instAcc = totalKeys > 0 ? (correct / totalKeys) * 100.0 : 100.0;
+        const currentTotalErrors = uncorrected + correctedErrorsCountRef.current;
+        const prevCumulative = telemetryRef.current.length > 0
+          ? telemetryRef.current[telemetryRef.current.length - 1].cumulativeErrors
+          : 0;
+        const errorsThisSecond = Math.max(0, currentTotalErrors - prevCumulative);
 
         telemetryRef.current.push({
           secondMarker: elapsedSeconds,
           instantWpm: Math.round(instWpm * 10.0) / 10.0,
+          rawWpm: Math.round(instGross * 10.0) / 10.0,
           instantAccuracy: Math.round(instAcc * 10.0) / 10.0,
-          cumulativeErrors: uncorrected + correctedErrorsCountRef.current,
+          cumulativeErrors: currentTotalErrors,
+          errorsAtSecond: errorsThisSecond,
         });
       }
 

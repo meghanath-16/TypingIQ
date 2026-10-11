@@ -19,6 +19,8 @@ export interface SecondTelemetry {
   instantWpm: number;
   instantAccuracy: number;
   cumulativeErrors: number;
+  rawWpm?: number;
+  errorsAtSecond?: number;
 }
 
 export interface CharError {
@@ -55,6 +57,7 @@ export interface TypingSession {
   charErrors: CharError[];
   bigramErrors: BigramError[];
   keyStats?: KeyMetric[];
+  consistency?: number;
 }
 
 export interface SessionSubmitPayload {
@@ -77,6 +80,7 @@ export interface SessionSubmitPayload {
   charErrors: CharError[];
   bigramErrors: BigramError[];
   keyStats?: KeyMetric[];
+  consistency?: number;
 }
 
 export interface DashboardStats {
