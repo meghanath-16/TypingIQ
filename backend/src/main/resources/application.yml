@@ -7,7 +7,7 @@ spring:
 
   data:
     mongodb:
-      uri: ${SPRING_DATA_MONGODB_URI:mongodb://localhost:27017/typingiq_db}
+      uri: ${SPRING_DATA_MONGODB_URI:mongodb+srv://typingiq_user:FJH9HRW4Et1jqiy8@cluster0.rr1king.mongodb.net/typingiq_db?retryWrites=true&w=majority&appName=Cluster0}
 
 # Security & JWT Configuration (Configurable via environment variables)
 app:
