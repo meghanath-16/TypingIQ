@@ -9,7 +9,7 @@ services:
     region: oregon
     envVars:
       - key: SPRING_DATA_MONGODB_URI
-        sync: false # Set in Render Dashboard with your MongoDB Atlas URI
+        value: mongodb+srv://typingiq_user:FJH9HRW4Et1jqiy8@cluster0.rr1king.mongodb.net/typingiq_db?retryWrites=true&w=majority&appName=Cluster0
       - key: APP_JWT_SECRET
         generateValue: true
       - key: TYPINGIQ_ML_SERVICE_URL
