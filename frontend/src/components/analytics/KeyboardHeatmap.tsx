@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { api } from '../../services/api';
 import { KeyboardHeatmapData, KeyMetric } from '../../types';
 import { getLocalHeatmapData } from '../../utils/heatmapStorage';
@@ -13,40 +13,50 @@ const KEYBOARD_ROWS = [
   ['Z', 'X', 'C', 'V', 'B', 'N', 'M'],
 ];
 
+import { useAuth } from '../../context/AuthContext';
+import { AuthRequiredCard } from '../common/AuthRequiredCard';
+
 export const KeyboardHeatmap: React.FC = () => {
+  const { isAuthenticated } = useAuth();
   const [data, setData] = useState<KeyboardHeatmapData | null>(null);
   const [selectedKey, setSelectedKey] = useState<KeyMetric | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const fetchHeatmap = async () => {
+  const fetchHeatmap = useCallback(async () => {
+    if (!isAuthenticated) {
+      setData(null);
+      setSelectedKey(null);
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     try {
       const res = await api.analytics.getHeatmap();
-      const hasPresses = res && res.keys && res.keys.some((k) => k.totalPresses > 0);
-      if (hasPresses) {
+      if (res && res.keys) {
         setData(res);
         const keyWithErrors = res.keys.find((k) => k.errorPresses > 0);
         const keyWithPresses = res.keys.find((k) => k.totalPresses > 0);
         setSelectedKey(keyWithErrors || keyWithPresses || (res.keys.length > 0 ? res.keys[0] : null));
-        setIsLoading(false);
-        return;
       }
     } catch (err) {
-      console.warn('Backend heatmap fetch, falling back to local keystroke telemetry:', err);
+      console.warn('Backend heatmap fetch error:', err);
+    } finally {
+      setIsLoading(false);
     }
-
-    // High precision client-side fallback
-    const localData = getLocalHeatmapData();
-    setData(localData);
-    const keyWithErrors = localData.keys.find((k) => k.errorPresses > 0);
-    const keyWithPresses = localData.keys.find((k) => k.totalPresses > 0);
-    setSelectedKey(keyWithErrors || keyWithPresses || localData.keys[0]);
-    setIsLoading(false);
-  };
+  }, [isAuthenticated]);
 
   useEffect(() => {
     fetchHeatmap();
-  }, []);
+  }, [fetchHeatmap]);
+
+  if (!isAuthenticated) {
+    return (
+      <AuthRequiredCard
+        title="Sign In to Access Keyboard Heatmap"
+        description="Log in to view your physical key strike telemetry, finger fatigue mapping, and character accuracy distribution."
+      />
+    );
+  }
 
   const getKeyMetric = (char: string): KeyMetric => {
     if (!data) return { keyChar: char, totalPresses: 0, errorPresses: 0, errorRate: 0 };

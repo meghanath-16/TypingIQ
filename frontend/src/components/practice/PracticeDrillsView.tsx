@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { api } from '../../services/api';
 import { Exercise, ExerciseAttemptResult } from '../../types';
 import { useTypingEngine } from '../../hooks/useTypingEngine';
@@ -17,8 +17,11 @@ import {
 } from 'lucide-react';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
+import { useAuth } from '../../context/AuthContext';
+import { AuthRequiredCard } from '../common/AuthRequiredCard';
 
 export const PracticeDrillsView: React.FC = () => {
+  const { isAuthenticated } = useAuth();
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [progress, setProgress] = useState<ExerciseAttemptResult[]>([]);
   const [activeExercise, setActiveExercise] = useState<Exercise | null>(null);
@@ -27,60 +30,40 @@ export const PracticeDrillsView: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [genMessage, setGenMessage] = useState<string | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
+    if (!isAuthenticated) {
+      setExercises([]);
+      setProgress([]);
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     try {
       const [exList, progList] = await Promise.all([
         api.exercises.getAll().catch(() => []),
         api.exercises.getProgress().catch(() => []),
       ]);
-      if (exList && exList.length > 0) {
-        setExercises(exList);
-      } else {
-        setExercises([
-          {
-            id: 'ex-1',
-            title: 'Home Row Cadence',
-            targetKeys: 'A, S, D, F, J, K, L',
-            difficulty: 'EASY',
-            contentText: 'fall ask flash glad salad flask dad fad salsa salad falls ask',
-            targetAccuracy: 95,
-            targetWpm: 40,
-            userPassed: true,
-          },
-          {
-            id: 'ex-2',
-            title: 'Top Row Vowel Transitions',
-            targetKeys: 'E, R, T, U, I, O',
-            difficulty: 'MEDIUM',
-            contentText: 'there routine outwrite pointer query torque require tutor router',
-            targetAccuracy: 96,
-            targetWpm: 50,
-            userPassed: false,
-          },
-          {
-            id: 'ex-3',
-            title: 'Bottom Row Lateral Shift',
-            targetKeys: 'Z, X, C, V, B, N, M',
-            difficulty: 'HARD',
-            contentText: 'maximum zinc zebra convex vacuum examine bronze beacon dynamic',
-            targetAccuracy: 94,
-            targetWpm: 45,
-            userPassed: false,
-          },
-        ]);
-      }
-      setProgress(progList);
+      setExercises(exList || []);
+      setProgress(progList || []);
     } catch (err) {
-      console.warn('Exercises loaded with built-in curriculum:', err);
+      console.warn('Practice drills fetch error:', err);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [isAuthenticated]);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
+
+  if (!isAuthenticated) {
+    return (
+      <AuthRequiredCard
+        title="Sign In to Access Practice Drills"
+        description="Log in to access targeted muscle memory drills, bigram correction exercises, and adaptive practice paths."
+      />
+    );
+  }
 
   const totalPassed = exercises.filter((e) => e.userPassed).length;
 
@@ -417,7 +400,7 @@ const DrillRunnerModal: React.FC<DrillRunnerModalProps> = ({
             </div>
           )}
 
-          {targetText.split('').map((char, index) => {
+          {targetText.split('').map((char: string, index: number) => {
             const isTyped = index < currentIndex;
             const isCurrent = index === currentIndex;
             const isCorrect = isTyped && inputChars[index] === char;

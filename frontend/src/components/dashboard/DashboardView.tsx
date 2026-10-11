@@ -17,92 +17,37 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Button from '@mui/material/Button';
+import { AuthRequiredCard } from '../common/AuthRequiredCard';
 
 export const DashboardView: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setStats(null);
+      return;
+    }
+
     const fetchDashboard = async () => {
       try {
         const res = await api.analytics.getDashboard();
         setStats(res);
       } catch (err) {
-        console.warn('Backend dashboard stats, falling back to local storage sessions:', err);
-      }
-
-      // Check local session history to populate if fresh
-      try {
-        const raw = localStorage.getItem('typingiq_local_sessions');
-        if (raw) {
-          const localSessions: TypingSession[] = JSON.parse(raw);
-          if (localSessions.length > 0) {
-            setStats((prev) => {
-              if (prev && prev.totalSessions > 0) return prev;
-              const bestWpm = Math.max(...localSessions.map((s) => s.netWpm));
-              const avgWpm =
-                Math.round(
-                  (localSessions.reduce((acc, s) => acc + s.netWpm, 0) / localSessions.length) * 10
-                ) / 10;
-              const avgAcc =
-                Math.round(
-                  (localSessions.reduce((acc, s) => acc + s.accuracyPercentage, 0) /
-                    localSessions.length) *
-                    10
-                ) / 10;
-              const totalStrokes = localSessions.reduce((acc, s) => acc + s.totalKeystrokes, 0);
-              const totalCorrect = localSessions.reduce((acc, s) => acc + s.correctKeystrokes, 0);
-              const totalErrors = localSessions.reduce((acc, s) => acc + s.errorCount, 0);
-              const avgIki =
-                Math.round(
-                  (localSessions.reduce((acc, s) => acc + s.avgInterKeyIntervalMs, 0) /
-                    localSessions.length) *
-                    10
-                ) / 10;
-              const avgPause =
-                Math.round(
-                  (localSessions.reduce((acc, s) => acc + s.avgPauseDurationMs, 0) /
-                    localSessions.length) *
-                    10
-                ) / 10;
-              const avgRecovery =
-                Math.round(
-                  (localSessions.reduce((acc, s) => acc + s.errorRecoveryTimeMs, 0) /
-                    localSessions.length) *
-                    10
-                ) / 10;
-              const avgCorrection =
-                Math.round(
-                  (localSessions.reduce((acc, s) => acc + s.correctionRate, 0) /
-                    localSessions.length) *
-                    10
-                ) / 10;
-
-              return {
-                totalSessions: localSessions.length,
-                bestWpm,
-                avgWpm,
-                avgGrossWpm: avgWpm + 4,
-                avgAccuracy: avgAcc,
-                totalKeystrokes: totalStrokes,
-                totalCorrectKeystrokes: totalCorrect,
-                totalErrorKeystrokes: totalErrors,
-                avgCorrectionRate: avgCorrection,
-                avgInterKeyIntervalMs: avgIki,
-                avgPauseDurationMs: avgPause,
-                avgErrorRecoveryTimeMs: avgRecovery,
-                currentStreakDays: 1,
-                recentSessions: localSessions.slice(0, 10),
-              };
-            });
-          }
-        }
-      } catch {
-        // ignore
+        console.warn('Backend dashboard stats error:', err);
       }
     };
     fetchDashboard();
-  }, []);
+  }, [isAuthenticated]);
+
+  if (!isAuthenticated) {
+    return (
+      <AuthRequiredCard
+        title="Sign In to Access Dashboard"
+        description="Log in to view your typing sessions, personalized WPM analytics, accuracy trajectory, and performance insights."
+      />
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-8 animate-fade-in text-slate-100">

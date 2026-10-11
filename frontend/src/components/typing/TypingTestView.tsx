@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { useTypingEngine, TestDuration, TestDifficulty } from '../../hooks/useTypingEngine';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../services/api';
@@ -14,6 +14,7 @@ import {
   BarChart2,
   CheckCircle2,
   Share2,
+  LogIn,
 } from 'lucide-react';
 import {
   LineChart,
@@ -26,16 +27,7 @@ import {
 } from 'recharts';
 import { Link, useNavigate } from 'react-router-dom';
 
-interface ParsedWord {
-  id: number;
-  word: string;
-  startIndex: number;
-  endIndex: number;
-  hasSpaceAfter: boolean;
-  spaceIndex?: number;
-}
-
-// Custom error cross marker for chart errors
+// Custom error marker for the performance telemetry chart
 const CustomErrorMarker = (props: any) => {
   const { cx, cy, payload } = props;
   if (!payload || !payload.errorsAtSecond || payload.errorsAtSecond <= 0) {
@@ -67,14 +59,14 @@ export const TypingTestView: React.FC = () => {
   const [isGeneratingDrill, setIsGeneratingDrill] = useState<boolean>(false);
   const [showDetailedInsights, setShowDetailedInsights] = useState<boolean>(false);
 
-  // Floating Monkeytype Smooth Caret coordinates
+  // Floating Caret coordinates
   const [caretCoords, setCaretCoords] = useState<{ left: number; top: number; height: number }>({
     left: 0,
     top: 0,
     height: 36,
   });
 
-  // Smooth 3-Line Window Scroll state
+  // Dynamic 3-Line Window Scroll state
   const [scrollOffset, setScrollOffset] = useState<number>(0);
   const [singleLineHeight, setSingleLineHeight] = useState<number>(58);
 
@@ -89,30 +81,24 @@ export const TypingTestView: React.FC = () => {
     };
     setCompletedSession(immediateSession);
 
-    try {
-      const stored = localStorage.getItem('typingiq_local_sessions');
-      const sessions = stored ? JSON.parse(stored) : [];
-      sessions.unshift(immediateSession);
-      localStorage.setItem('typingiq_local_sessions', JSON.stringify(sessions.slice(0, 50)));
-    } catch {
-      // ignore
-    }
-
-    try {
-      const saved = await api.sessions.submit(payload);
-      setCompletedSession(saved);
-      setSaveSuccess(true);
-    } catch (err) {
-      console.warn('Session persisted locally. Server sync error:', err);
+    // Only persist to cloud if user is signed in!
+    if (isAuthenticated) {
+      try {
+        const saved = await api.sessions.submit(payload);
+        setCompletedSession(saved);
+        setSaveSuccess(true);
+      } catch (err) {
+        console.warn('Session server sync error:', err);
+      }
     }
   };
 
   const {
     duration,
     difficulty,
-    targetText,
-    inputChars,
-    currentIndex,
+    words,
+    typedWords,
+    currentWordIndex,
     testStatus,
     timeLeft,
     grossWpm,
@@ -129,54 +115,11 @@ export const TypingTestView: React.FC = () => {
     onTestComplete: handleTestComplete,
   });
 
-  // Parse words and exact character positions for line wrapping
-  const parsedWords = useMemo<ParsedWord[]>(() => {
-    const words: ParsedWord[] = [];
-    const rawWords = targetText.split(' ');
-    let charPos = 0;
-
-    for (let i = 0; i < rawWords.length; i++) {
-      const w = rawWords[i];
-      const startIndex = charPos;
-      const endIndex = charPos + w.length - 1;
-      charPos += w.length;
-
-      const hasSpaceAfter = i < rawWords.length - 1;
-      const spaceIndex = hasSpaceAfter ? charPos : undefined;
-      if (hasSpaceAfter) {
-        charPos += 1;
-      }
-
-      words.push({
-        id: i,
-        word: w,
-        startIndex,
-        endIndex,
-        hasSpaceAfter,
-        spaceIndex,
-      });
-    }
-    return words;
-  }, [targetText]);
-
-  // Identify active word index from current cursor character position
-  const activeWordIndex = useMemo(() => {
-    for (let i = 0; i < parsedWords.length; i++) {
-      const w = parsedWords[i];
-      if (
-        currentIndex >= w.startIndex &&
-        (w.spaceIndex === undefined ? currentIndex <= w.endIndex : currentIndex <= w.spaceIndex)
-      ) {
-        return i;
-      }
-    }
-    return Math.max(0, parsedWords.length - 1);
-  }, [parsedWords, currentIndex]);
-
   // Dynamic 3-Line Window Controller:
-  // Show exactly 3 lines; when the top line is finished, remove it and shift the next line into view!
+  // Show exactly 3 lines; when the active word wraps to line 2 (Line 1 is finished),
+  // scroll up so Line 1 is removed and the next line becomes visible!
   useLayoutEffect(() => {
-    const activeWordEl = wordRefs.current[activeWordIndex];
+    const activeWordEl = wordRefs.current[currentWordIndex];
     const firstWordEl = wordRefs.current[0];
     if (!activeWordEl || !firstWordEl) return;
 
@@ -184,8 +127,8 @@ export const TypingTestView: React.FC = () => {
     const currentWordTop = activeWordEl.offsetTop;
     const relativeTop = currentWordTop - baseTop;
 
-    // Detect exact single line height from first wrapped word
-    for (let i = 0; i < parsedWords.length; i++) {
+    // Detect single line height from wrapped words
+    for (let i = 0; i < words.length; i++) {
       const el = wordRefs.current[i];
       if (el && el.offsetTop > baseTop) {
         const detected = el.offsetTop - baseTop;
@@ -197,43 +140,46 @@ export const TypingTestView: React.FC = () => {
     }
 
     // Scroll up by relativeTop so current line is always at the top of the 3 visible lines.
-    // Finished lines above it are scrolled out of view!
     setScrollOffset(Math.max(0, relativeTop));
-  }, [activeWordIndex, parsedWords, currentIndex]);
+  }, [currentWordIndex, words]);
 
-  // Smooth Gliding Caret Positioning (inside words wrapper)
+  // Caret Positioning: points directly to the next character to be typed in the current word
   useLayoutEffect(() => {
     if (!wordsWrapperRef.current) return;
     const wrapper = wordsWrapperRef.current;
-    const activeCharEl = document.getElementById(`char-${currentIndex}`);
+    const currentTyped = typedWords[currentWordIndex] || '';
+    const targetWord = words[currentWordIndex] || '';
+
+    // Element id for current character in current word
+    const charElId = `char-${currentWordIndex}-${Math.min(currentTyped.length, targetWord.length - 1)}`;
+    const activeCharEl = document.getElementById(charElId);
 
     if (activeCharEl) {
       const wrapperRect = wrapper.getBoundingClientRect();
       const charRect = activeCharEl.getBoundingClientRect();
-      setCaretCoords({
-        left: charRect.left - wrapperRect.left,
-        top: charRect.top - wrapperRect.top + 4,
-        height: Math.max(28, charRect.height - 8),
-      });
-    } else {
-      const lastWord = parsedWords[parsedWords.length - 1];
-      const lastCharEl = document.getElementById(`char-${lastWord?.endIndex}`);
-      if (lastCharEl) {
-        const wrapperRect = wrapper.getBoundingClientRect();
-        const charRect = lastCharEl.getBoundingClientRect();
+
+      if (currentTyped.length >= targetWord.length) {
+        // At or past the end of the word -> Caret is at the right edge
         setCaretCoords({
           left: charRect.right - wrapperRect.left,
           top: charRect.top - wrapperRect.top + 4,
           height: Math.max(28, charRect.height - 8),
         });
+      } else {
+        // In the middle of the word -> Caret is at the left edge of the active letter
+        setCaretCoords({
+          left: charRect.left - wrapperRect.left,
+          top: charRect.top - wrapperRect.top + 4,
+          height: Math.max(28, charRect.height - 8),
+        });
       }
     }
-  }, [currentIndex, targetText, scrollOffset, parsedWords]);
+  }, [currentWordIndex, typedWords, words, scrollOffset]);
 
   // Window resize handler to realign lines and caret
   useEffect(() => {
     const handleResize = () => {
-      const activeWordEl = wordRefs.current[activeWordIndex];
+      const activeWordEl = wordRefs.current[currentWordIndex];
       const firstWordEl = wordRefs.current[0];
       if (activeWordEl && firstWordEl) {
         const baseTop = firstWordEl.offsetTop;
@@ -243,7 +189,7 @@ export const TypingTestView: React.FC = () => {
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [activeWordIndex]);
+  }, [currentWordIndex]);
 
   const handleDurationChange = (dur: TestDuration) => {
     setDuration(dur);
@@ -266,15 +212,7 @@ export const TypingTestView: React.FC = () => {
     resetTest();
   };
 
-  const repeatSameText = () => {
-    const sameText = targetText;
-    setCompletedSession(null);
-    setSaveSuccess(false);
-    setScrollOffset(0);
-    resetTest(duration, difficulty, sameText);
-  };
-
-  // Keyboard shortcut: Tab or Tab+Enter to instantly restart
+  // Keyboard shortcut: Tab to restart
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Tab') {
@@ -300,6 +238,10 @@ export const TypingTestView: React.FC = () => {
   }, []);
 
   const handleGenerateCustomDrill = async () => {
+    if (!isAuthenticated) {
+      navigate('/login');
+      return;
+    }
     try {
       setIsGeneratingDrill(true);
       await api.exercises.generateTargeted();
@@ -488,9 +430,18 @@ export const TypingTestView: React.FC = () => {
           {/* User status prompt */}
           <div className="text-center text-xs font-mono text-[#646669] pt-2">
             {isAuthenticated ? (
-              <span className="text-emerald-400/80">Result securely synchronized to your profile</span>
+              <span className="text-emerald-400/80">Result synchronized to your account</span>
             ) : (
-              <span>Sign in to save your result</span>
+              <div className="flex items-center justify-center gap-2">
+                <span>Sign in to save your result and track your progress across tests:</span>
+                <Link
+                  to="/login"
+                  className="text-[#e2b714] hover:underline font-bold inline-flex items-center gap-1"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>Sign In</span>
+                </Link>
+              </div>
             )}
           </div>
 
@@ -505,7 +456,7 @@ export const TypingTestView: React.FC = () => {
                 <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
               <button
-                onClick={repeatSameText}
+                onClick={restartCurrentTest}
                 title="Repeat test"
                 className="hover:text-[#d1d0c5] transition-colors p-2"
               >
@@ -544,7 +495,7 @@ export const TypingTestView: React.FC = () => {
             {/* Restart keyboard shortcut hint badge */}
             <div className="flex items-center gap-2 text-xs font-mono text-[#646669]">
               <span className="px-2 py-0.5 rounded bg-[#2c2e31] text-[#9a9c9e] text-[11px] border border-white/5">
-                tab &gt; enter
+                tab
               </span>
               <span>- restart test</span>
             </div>
@@ -749,64 +700,63 @@ export const TypingTestView: React.FC = () => {
                   />
                 )}
 
-                {/* Stream of Words formatted into words and letters */}
-                {parsedWords.map((wordInfo) => (
-                  <div
-                    key={wordInfo.id}
-                    data-word-idx={wordInfo.id}
-                    ref={(el) => {
-                      wordRefs.current[wordInfo.id] = el;
-                    }}
-                    className="inline-flex items-baseline mr-[0.55em] my-0"
-                  >
-                    {/* Letters */}
-                    {wordInfo.word.split('').map((char, localIdx) => {
-                      const globalIdx = wordInfo.startIndex + localIdx;
-                      const isTyped = globalIdx < currentIndex;
-                      const isCurrent = globalIdx === currentIndex;
-                      const isCorrect = isTyped && inputChars[globalIdx] === char;
-                      const isIncorrect = isTyped && inputChars[globalIdx] !== char;
+                {/* Stream of Words: Word-Aware rendering */}
+                {words.map((targetWord, wIdx) => {
+                  const typedWord = typedWords[wIdx] || '';
+                  const isCurrentWord = wIdx === currentWordIndex;
+                  const isPastWord = wIdx < currentWordIndex;
 
-                      let charClass = 'text-[#646669]'; // untyped muted gray
-                      if (isCorrect) {
-                        charClass = 'text-[#d1d0c5]'; // correctly typed cream/white
-                      } else if (isIncorrect) {
-                        charClass = 'text-[#ca4754] bg-[#ca4754]/20 rounded-sm px-[1px]'; // mistyped red
-                      }
+                  return (
+                    <div
+                      key={wIdx}
+                      ref={(el) => {
+                        wordRefs.current[wIdx] = el;
+                      }}
+                      className="inline-flex items-baseline mr-[0.55em] my-0"
+                    >
+                      {/* Characters of the target word */}
+                      {targetWord.split('').map((char, cIdx) => {
+                        const hasTyped = cIdx < typedWord.length;
+                        const isCurrentChar = isCurrentWord && cIdx === typedWord.length;
+                        const isCorrect = hasTyped && typedWord[cIdx] === char;
+                        const isIncorrect = hasTyped && typedWord[cIdx] !== char;
 
-                      return (
-                        <span
-                          key={globalIdx}
-                          id={`char-${globalIdx}`}
-                          className={`transition-colors duration-75 ${charClass} ${
-                            isCurrent ? 'opacity-100' : ''
-                          }`}
-                        >
-                          {char}
-                        </span>
-                      );
-                    })}
+                        let charClass = 'text-[#646669]'; // default untyped muted gray
+                        if (isCorrect) {
+                          charClass = 'text-[#d1d0c5]'; // correctly typed cream/white
+                        } else if (isIncorrect) {
+                          charClass = 'text-[#ca4754] bg-[#ca4754]/20 rounded-sm px-[1px]'; // mistyped red
+                        } else if (isPastWord && !hasTyped) {
+                          charClass = 'text-[#ca4754]/50'; // missed character in skipped word
+                        }
 
-                    {/* Trailing Space Character */}
-                    {wordInfo.hasSpaceAfter && wordInfo.spaceIndex !== undefined && (
-                      <span
-                        id={`char-${wordInfo.spaceIndex}`}
-                        className={`inline-block ${
-                          wordInfo.spaceIndex < currentIndex &&
-                          inputChars[wordInfo.spaceIndex] !== ' '
-                            ? 'bg-[#ca4754]/40 text-[#ca4754] px-0.5 rounded-sm'
-                            : 'text-transparent'
-                        }`}
-                        style={{ width: '0.35em' }}
-                      >
-                        {wordInfo.spaceIndex < currentIndex &&
-                        inputChars[wordInfo.spaceIndex] !== ' '
-                          ? inputChars[wordInfo.spaceIndex]
-                          : '\u00A0'}
-                      </span>
-                    )}
-                  </div>
-                ))}
+                        return (
+                          <span
+                            key={cIdx}
+                            id={`char-${wIdx}-${cIdx}`}
+                            className={`transition-colors duration-75 ${charClass} ${
+                              isCurrentChar ? 'opacity-100' : ''
+                            }`}
+                          >
+                            {char}
+                          </span>
+                        );
+                      })}
+
+                      {/* Extra characters typed beyond target word length */}
+                      {typedWord.length > targetWord.length &&
+                        typedWord.slice(targetWord.length).split('').map((extraChar, extraIdx) => (
+                          <span
+                            key={`extra-${extraIdx}`}
+                            id={`char-${wIdx}-${targetWord.length + extraIdx}`}
+                            className="text-[#ca4754] bg-[#ca4754]/20 rounded-sm px-[1px] transition-colors"
+                          >
+                            {extraChar}
+                          </span>
+                        ))}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -829,7 +779,7 @@ export const TypingTestView: React.FC = () => {
             </div>
           </div>
 
-          {/* Quick HUD Metrics Bar (subtle at bottom) */}
+          {/* Quick HUD Metrics Bar (subtle at bottom during test) */}
           {testStatus === 'RUNNING' && (
             <div className="flex items-center justify-center gap-8 text-xs font-mono text-[#646669] pt-2">
               <div>

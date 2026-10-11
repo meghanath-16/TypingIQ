@@ -36,8 +36,11 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
+import { useAuth } from '../../context/AuthContext';
+import { AuthRequiredCard } from '../common/AuthRequiredCard';
 
 export const AiIntelligenceCenter: React.FC = () => {
+  const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [errorPrediction, setErrorPrediction] = useState<ErrorPredictionResult | null>(null);
   const [forecast, setForecast] = useState<PerformanceForecastResult | null>(null);
@@ -49,7 +52,16 @@ export const AiIntelligenceCenter: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setErrorPrediction(null);
+      setForecast(null);
+      setCluster(null);
+      setRecommendations(null);
+      return;
+    }
+
     const fetchInsights = async () => {
+      setIsLoading(true);
       try {
         const [errRes, foreRes, clustRes, recRes] = await Promise.all([
           api.ai.getErrorPrediction(testLength, testDifficulty).catch(() => null),
@@ -159,6 +171,15 @@ export const AiIntelligenceCenter: React.FC = () => {
   };
 
   const personaTheme = getPersonaColor(cluster?.persona_title);
+
+  if (!isAuthenticated) {
+    return (
+      <AuthRequiredCard
+        title="Sign In to Access AI Intelligence"
+        description="Log in to access machine learning error predictions, speed forecasting, cluster typist persona, and adaptive recommendations."
+      />
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-8 animate-fade-in text-slate-100">

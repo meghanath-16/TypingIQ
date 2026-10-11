@@ -13,54 +13,45 @@ import {
 } from 'recharts';
 import { LineChart as ChartIcon, Zap, Target, Calendar, Award } from 'lucide-react';
 import Chip from '@mui/material/Chip';
+import { useAuth } from '../../context/AuthContext';
+import { AuthRequiredCard } from '../common/AuthRequiredCard';
 
 export const TrendCharts: React.FC = () => {
+  const { isAuthenticated } = useAuth();
   const [points, setPoints] = useState<HistoryPoint[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setPoints([]);
+      setIsLoading(false);
+      return;
+    }
+
     const fetchHistory = async () => {
       setIsLoading(true);
       try {
         const res = await api.analytics.getHistory();
-        if (res && res.points && res.points.length > 0) {
+        if (res && res.points) {
           setPoints(res.points);
-          setIsLoading(false);
-          return;
         }
       } catch (err) {
-        console.warn('Backend history fetch, falling back to local session history:', err);
+        console.warn('Backend history fetch error:', err);
+      } finally {
+        setIsLoading(false);
       }
-
-      // Check local sessions
-      try {
-        const raw = localStorage.getItem('typingiq_local_sessions');
-        if (raw) {
-          const localSessions: TypingSession[] = JSON.parse(raw);
-          if (localSessions.length > 0) {
-            const mappedPoints: HistoryPoint[] = localSessions
-              .slice()
-              .reverse()
-              .map((s, idx) => ({
-                sessionIndex: idx + 1,
-                sessionId: s.id,
-                netWpm: s.netWpm,
-                grossWpm: s.grossWpm,
-                accuracy: s.accuracyPercentage,
-                difficulty: s.difficulty,
-                durationSeconds: s.durationSeconds,
-                completedAt: s.completedAt,
-              }));
-            setPoints(mappedPoints);
-          }
-        }
-      } catch {
-        // ignore
-      }
-      setIsLoading(false);
     };
     fetchHistory();
-  }, []);
+  }, [isAuthenticated]);
+
+  if (!isAuthenticated) {
+    return (
+      <AuthRequiredCard
+        title="Sign In to Access History Trends"
+        description="Log in to view your velocity trajectory, typing consistency, and performance progression over time."
+      />
+    );
+  }
 
   const highestWpm = points.length > 0 ? Math.max(...points.map((p) => p.netWpm)) : 0;
   const avgWpm =
