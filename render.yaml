@@ -1,0 +1,29 @@
+services:
+  # 1. Spring Boot Backend Web Service
+  - type: web
+    name: typingiq-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    region: oregon
+    envVars:
+      - key: SPRING_DATA_MONGODB_URI
+        sync: false # Set in Render Dashboard with your MongoDB Atlas URI
+      - key: APP_JWT_SECRET
+        generateValue: true
+      - key: TYPINGIQ_ML_SERVICE_URL
+        fromService:
+          type: web
+          name: typingiq-ml-service
+          property: host
+          # Will format as http://typingiq-ml-service/internal/v1/ml or https://...
+
+  # 2. FastAPI Python ML Service
+  - type: web
+    name: typingiq-ml-service
+    runtime: docker
+    dockerfilePath: ./ml-service/Dockerfile
+    dockerContext: ./ml-service
+    plan: free
+    region: oregon

@@ -1,0 +1,71 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#090d16] text-slate-100 font-sans antialiased selection:bg-amber-500/20 selection:text-amber-300 min-h-screen;
+    background-image: 
+      radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, rgba(245, 158, 11, 0.05) 0px, transparent 40%),
+      radial-gradient(at 50% 100%, rgba(16, 185, 129, 0.05) 0px, transparent 50%);
+  }
+}
+
+/* Smooth Floating Caret (Standard Glow) */
+.smooth-caret {
+  position: absolute;
+  width: 2.5px;
+  background: #f59e0b;
+  box-shadow: 0 0 12px #f59e0b, 0 0 2px #ffffff;
+  border-radius: 9999px;
+  transition: left 0.09s cubic-bezier(0.2, 0.9, 0.3, 1), top 0.1s cubic-bezier(0.2, 0.9, 0.3, 1), height 0.08s ease;
+  z-index: 20;
+  pointer-events: none;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.8), 0 0 2px #ffffff;
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 4px rgba(245, 158, 11, 0.4);
+    opacity: 0.6;
+  }
+}
+
+.caret-pulse {
+  animation: pulse-glow 1s ease-in-out infinite;
+}
+
+/* Glassmorphism Cards */
+.dark-glass-card {
+  background: rgba(18, 24, 38, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5), 0 0 1px 1px rgba(255, 255, 255, 0.05) inset;
+}
+
+.dark-glass-card:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+/* Minimal Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #090d16;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
